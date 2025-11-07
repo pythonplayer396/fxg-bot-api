@@ -51,8 +51,8 @@ app.post('/send-interview-dm', async (req, res) => {
       .setTitle('🎉 Interview Invitation')
       .setDescription(
         `Hi **${applicantName}**!\n\n` +
-        `Congratulations! You've been selected for an interview for the **${applicationType}** position.\n\n` +
-        `Our team will contact you soon with more details about the next steps.\n\n` +
+        `You have been selected for an interview for the **${applicationType}** position.\n\n` +
+        `Our staff managers will contact you soon with more details about the interview.\n\n` +
         `Good luck! 🍀`
       )
       .setColor(0x8B5CF6)
@@ -90,9 +90,9 @@ app.post('/send-approval-dm', async (req, res) => {
       .setTitle('✅ Application Approved!')
       .setDescription(
         `Hi **${applicantName}**!\n\n` +
-        `Congratulations! Your application for the **${applicationType}** position has been **APPROVED**! 🎉\n\n` +
+        `Congratulations! Your interview has been successful and your application for the **${applicationType}** position has been **APPROVED**! 🎉\n\n` +
         `Welcome to the FxG team! We're excited to have you on board.\n\n` +
-        `You'll receive further instructions soon.`
+        `You'll receive further instructions from our staff managers soon.`
       )
       .setColor(0x10B981)
       .setFooter({ text: 'FxG Team' })
