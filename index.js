@@ -11,6 +11,8 @@ app.use(cors());
 // Configuration
 const CONFIG = {
   CATEGORY_ID: '1436453776113270904',
+  APPROVED_CATEGORY_ID: '1436462936028614687',
+  DENIED_CATEGORY_ID: '1436463032174776420',
   ROLE_1: '1308840318690394233',
   ROLE_2: '1246460406055178260',
   WELCOME_CHANNEL: '1412296487987056650',
@@ -224,6 +226,17 @@ app.post('/send-approval-dm', async (req, res) => {
     await member.roles.add([CONFIG.ROLE_1, CONFIG.ROLE_2]);
     console.log(`✅ Added roles to ${user.tag}`);
 
+    // Move interview channel to approved category
+    if (interviewChannels.has(discordId)) {
+      const channelId = interviewChannels.get(discordId);
+      const channel = guild.channels.cache.get(channelId);
+      
+      if (channel) {
+        await channel.setParent(CONFIG.APPROVED_CATEGORY_ID);
+        console.log(`✅ Moved ${channel.name} to approved category`);
+      }
+    }
+
     // Send welcome message in staff channel
     const welcomeChannel = guild.channels.cache.get(CONFIG.WELCOME_CHANNEL);
     if (welcomeChannel) {
@@ -272,12 +285,17 @@ app.post('/send-denial-dm', async (req, res) => {
     const user = await client.users.fetch(discordId);
     const guild = client.guilds.cache.get(CONFIG.GUILD_ID);
 
-    // Remove channel permissions if they have an interview channel
+    // Move channel to denied category and remove user permissions
     if (interviewChannels.has(discordId) && guild) {
       const channelId = interviewChannels.get(discordId);
       const channel = guild.channels.cache.get(channelId);
       
       if (channel) {
+        // Move to denied category
+        await channel.setParent(CONFIG.DENIED_CATEGORY_ID);
+        console.log(`✅ Moved ${channel.name} to denied category`);
+        
+        // Remove user permissions
         await channel.permissionOverwrites.delete(discordId);
         console.log(`✅ Removed channel permissions for ${user.tag} from ${channel.name}`);
       }
