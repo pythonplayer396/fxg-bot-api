@@ -1,6 +1,6 @@
 
 const express = require('express');
-const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits, ChannelType } = require('discord.js');
 const cors = require('cors');
 require('dotenv').config();
 
@@ -8,9 +8,25 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
+// Configuration
+const CONFIG = {
+  CATEGORY_ID: '1436453776113270904',
+  ROLE_1: '1308840318690394233',
+  ROLE_2: '1246460406055178260',
+  WELCOME_CHANNEL: '1412296487987056650',
+  GUILD_ID: process.env.GUILD_ID // Add this to .env
+};
+
+// Storage for interview channels and counter
+const interviewChannels = new Map(); // discordId -> channelId
+let channelCounter = 0;
+
 // Initialize Discord client
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds]
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers
+  ]
 });
 
 // Login to Discord
@@ -18,6 +34,107 @@ client.login(process.env.DISCORD_BOT_TOKEN);
 
 client.once('ready', () => {
   console.log(`✅ Bot logged in as ${client.user.tag}`);
+  
+  // Initialize channel counter by checking existing channels
+  const guild = client.guilds.cache.get(CONFIG.GUILD_ID);
+  if (guild) {
+    const category = guild.channels.cache.get(CONFIG.CATEGORY_ID);
+    if (category) {
+      const intChannels = category.children.cache.filter(ch => ch.name.startsWith('int-'));
+      const numbers = intChannels.map(ch => {
+        const match = ch.name.match(/int-(\d+)/);
+        return match ? parseInt(match[1]) : 0;
+      });
+      channelCounter = numbers.length > 0 ? Math.max(...numbers) : 0;
+      console.log(`📊 Found ${intChannels.size} interview channels, counter set to ${channelCounter}`);
+    }
+  }
+});
+
+// Button interaction handler
+client.on('interactionCreate', async (interaction) => {
+  if (!interaction.isButton()) return;
+
+  if (interaction.customId === 'join_interview') {
+    try {
+      const guild = client.guilds.cache.get(CONFIG.GUILD_ID);
+      if (!guild) {
+        return interaction.reply({ content: '❌ Server not found!', ephemeral: true });
+      }
+
+      const member = await guild.members.fetch(interaction.user.id);
+      if (!member) {
+        return interaction.reply({ content: '❌ You are not a member of the server!', ephemeral: true });
+      }
+
+      // Check if user already has a channel
+      if (interviewChannels.has(interaction.user.id)) {
+        const existingChannelId = interviewChannels.get(interaction.user.id);
+        const existingChannel = guild.channels.cache.get(existingChannelId);
+        if (existingChannel) {
+          return interaction.reply({ 
+            content: `✅ You already have an interview channel: <#${existingChannelId}>`, 
+            ephemeral: true 
+          });
+        }
+      }
+
+      // Create interview channel
+      channelCounter++;
+      const channelName = `int-${channelCounter}`;
+
+      const channel = await guild.channels.create({
+        name: channelName,
+        type: ChannelType.GuildText,
+        parent: CONFIG.CATEGORY_ID,
+        permissionOverwrites: [
+          {
+            id: guild.id,
+            deny: [PermissionFlagsBits.ViewChannel]
+          },
+          {
+            id: interaction.user.id,
+            allow: [
+              PermissionFlagsBits.ViewChannel,
+              PermissionFlagsBits.SendMessages,
+              PermissionFlagsBits.ReadMessageHistory
+            ]
+          }
+        ]
+      });
+
+      // Store channel mapping
+      interviewChannels.set(interaction.user.id, channel.id);
+
+      // Send channel link to user
+      await interaction.user.send({
+        embeds: [new EmbedBuilder()
+          .setTitle('✅ Interview Channel Created!')
+          .setDescription(
+            `Your interview channel has been created!\n\n` +
+            `Channel: <#${channel.id}>\n\n` +
+            `Our staff will join you shortly. Good luck!`
+          )
+          .setColor(0x10B981)
+          .setFooter({ text: 'FxG Team' })
+          .setTimestamp()
+        ]
+      });
+
+      await interaction.reply({ 
+        content: `✅ Interview channel created: <#${channel.id}>`, 
+        ephemeral: true 
+      });
+
+      console.log(`✅ Created interview channel ${channelName} for ${interaction.user.tag}`);
+    } catch (error) {
+      console.error('Error creating interview channel:', error);
+      await interaction.reply({ 
+        content: '❌ Failed to create interview channel. Please contact an administrator.', 
+        ephemeral: true 
+      });
+    }
+  }
 });
 
 // Health check endpoint
@@ -53,13 +170,23 @@ app.post('/send-interview-dm', async (req, res) => {
         `Hi **${applicantName}**!\n\n` +
         `You have been selected for an interview for the **${applicationType}** position.\n\n` +
         `Our staff managers will contact you soon with more details about the interview.\n\n` +
+        `Click the button below to join your interview channel!\n\n` +
         `Good luck! 🍀`
       )
       .setColor(0x8B5CF6)
       .setFooter({ text: 'FxG Team' })
       .setTimestamp();
 
-    await user.send({ embeds: [embed] });
+    const button = new ActionRowBuilder()
+      .addComponents(
+        new ButtonBuilder()
+          .setCustomId('join_interview')
+          .setLabel('Join')
+          .setStyle(ButtonStyle.Success)
+          .setEmoji('✅')
+      );
+
+    await user.send({ embeds: [embed], components: [button] });
     
     res.json({ 
       success: true, 
@@ -85,7 +212,26 @@ app.post('/send-approval-dm', async (req, res) => {
 
   try {
     const user = await client.users.fetch(discordId);
+    const guild = client.guilds.cache.get(CONFIG.GUILD_ID);
     
+    if (!guild) {
+      return res.status(500).json({ error: 'Guild not found' });
+    }
+
+    const member = await guild.members.fetch(discordId);
+    
+    // Add roles
+    await member.roles.add([CONFIG.ROLE_1, CONFIG.ROLE_2]);
+    console.log(`✅ Added roles to ${user.tag}`);
+
+    // Send welcome message in staff channel
+    const welcomeChannel = guild.channels.cache.get(CONFIG.WELCOME_CHANNEL);
+    if (welcomeChannel) {
+      await welcomeChannel.send(`Welcome <@${discordId}> to staff!!`);
+      console.log(`✅ Sent welcome message for ${user.tag}`);
+    }
+
+    // Send approval DM
     const embed = new EmbedBuilder()
       .setTitle('✅ Application Approved!')
       .setDescription(
@@ -102,10 +248,10 @@ app.post('/send-approval-dm', async (req, res) => {
     
     res.json({ 
       success: true, 
-      message: `Approval DM sent to ${user.tag}` 
+      message: `Approval DM sent to ${user.tag}, roles added, welcome message sent` 
     });
   } catch (error) {
-    console.error('Error sending DM:', error);
+    console.error('Error sending approval:', error);
     res.status(500).json({ 
       success: false, 
       error: error.message 
@@ -124,7 +270,23 @@ app.post('/send-denial-dm', async (req, res) => {
 
   try {
     const user = await client.users.fetch(discordId);
+    const guild = client.guilds.cache.get(CONFIG.GUILD_ID);
+
+    // Remove channel permissions if they have an interview channel
+    if (interviewChannels.has(discordId) && guild) {
+      const channelId = interviewChannels.get(discordId);
+      const channel = guild.channels.cache.get(channelId);
+      
+      if (channel) {
+        await channel.permissionOverwrites.delete(discordId);
+        console.log(`✅ Removed channel permissions for ${user.tag} from ${channel.name}`);
+      }
+      
+      // Remove from tracking
+      interviewChannels.delete(discordId);
+    }
     
+    // Send denial DM
     const embed = new EmbedBuilder()
       .setTitle('Application Update')
       .setDescription(
@@ -141,10 +303,10 @@ app.post('/send-denial-dm', async (req, res) => {
     
     res.json({ 
       success: true, 
-      message: `Denial DM sent to ${user.tag}` 
+      message: `Denial DM sent to ${user.tag}, channel permissions removed` 
     });
   } catch (error) {
-    console.error('Error sending DM:', error);
+    console.error('Error sending denial:', error);
     res.status(500).json({ 
       success: false, 
       error: error.message 
