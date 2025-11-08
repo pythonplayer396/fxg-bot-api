@@ -332,6 +332,103 @@ app.post('/send-denial-dm', async (req, res) => {
   }
 });
 
+// Send career approval DM (for Slayer/Dungeon)
+app.post('/send-career-approval-dm', async (req, res) => {
+  const apiKey = req.headers.authorization?.replace('Bearer ', '');
+  if (apiKey !== process.env.API_SECRET) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const { discordId, applicantName, applicationType } = req.body;
+
+  try {
+    const user = await client.users.fetch(discordId);
+    const guild = client.guilds.cache.get(CONFIG.GUILD_ID);
+    
+    if (!guild) {
+      return res.status(500).json({ error: 'Guild not found' });
+    }
+
+    const member = await guild.members.fetch(discordId);
+    
+    // Add roles
+    await member.roles.add([CONFIG.ROLE_1, CONFIG.ROLE_2]);
+    console.log(`✅ Added roles to ${user.tag}`);
+
+    // Send welcome message in staff channel
+    const welcomeChannel = guild.channels.cache.get(CONFIG.WELCOME_CHANNEL);
+    if (welcomeChannel) {
+      await welcomeChannel.send(`Welcome <@${discordId}> to staff!!`);
+      console.log(`✅ Sent welcome message for ${user.tag}`);
+    }
+
+    // Send approval DM
+    const embed = new EmbedBuilder()
+      .setTitle('✅ You Have Been Selected!')
+      .setDescription(
+        `Hi **${applicantName}**!\n\n` +
+        `You have been selected for the **${applicationType}** carrier position.\n\n` +
+        `Welcome to the FxG team!`
+      )
+      .setColor(0x10B981)
+      .setFooter({ text: 'FxG Team' })
+      .setTimestamp();
+
+    await user.send({ embeds: [embed] });
+    
+    res.json({ 
+      success: true, 
+      message: `Career approval DM sent to ${user.tag}, roles added, welcome message sent` 
+    });
+  } catch (error) {
+    console.error('Error sending career approval:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
+// Send career denial DM (for Slayer/Dungeon)
+app.post('/send-career-denial-dm', async (req, res) => {
+  const apiKey = req.headers.authorization?.replace('Bearer ', '');
+  if (apiKey !== process.env.API_SECRET) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const { discordId, applicantName, applicationType } = req.body;
+
+  try {
+    const user = await client.users.fetch(discordId);
+    
+    // Send denial DM
+    const embed = new EmbedBuilder()
+      .setTitle('❌ Application Declined')
+      .setDescription(
+        `Hi **${applicantName}**,\n\n` +
+        `You have been declined from joining the **${applicationType}** carrier team.\n\n` +
+        `**You may try again in 2 weeks.**\n\n` +
+        `⚠️ **Important:** If you apply before 2 weeks, your application won't be seen and might cause you serious issues or you might get punished.`
+      )
+      .setColor(0xEF4444)
+      .setFooter({ text: 'FxG Team' })
+      .setTimestamp();
+
+    await user.send({ embeds: [embed] });
+    
+    res.json({ 
+      success: true, 
+      message: `Career denial DM sent to ${user.tag}` 
+    });
+  } catch (error) {
+    console.error('Error sending career denial:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`🚀 API server running on port ${PORT}`);
