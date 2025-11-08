@@ -237,11 +237,15 @@ app.post('/send-approval-dm', async (req, res) => {
       }
     }
 
-    // Send welcome message in staff channel
-    const welcomeChannel = guild.channels.cache.get(CONFIG.WELCOME_CHANNEL);
-    if (welcomeChannel) {
-      await welcomeChannel.send(`Welcome <@${discordId}> to staff!!`);
-      console.log(`✅ Sent welcome message for ${user.tag}`);
+    // Send welcome message in staff channel ONLY for Helper applications
+    if (applicationType === 'helper') {
+      const welcomeChannel = guild.channels.cache.get(CONFIG.WELCOME_CHANNEL);
+      if (welcomeChannel) {
+        await welcomeChannel.send(`Welcome <@${discordId}> to staff!!`);
+        console.log(`✅ Sent welcome message for ${user.tag}`);
+      }
+    } else {
+      console.log(`ℹ️ Skipping welcome message for ${applicationType} application`);
     }
 
     // Send approval DM
@@ -355,12 +359,8 @@ app.post('/send-career-approval-dm', async (req, res) => {
     await member.roles.add([CONFIG.ROLE_1, CONFIG.ROLE_2]);
     console.log(`✅ Added roles to ${user.tag}`);
 
-    // Send welcome message in staff channel
-    const welcomeChannel = guild.channels.cache.get(CONFIG.WELCOME_CHANNEL);
-    if (welcomeChannel) {
-      await welcomeChannel.send(`Welcome <@${discordId}> to staff!!`);
-      console.log(`✅ Sent welcome message for ${user.tag}`);
-    }
+    // NO welcome message for career applications (only for Helper)
+    console.log(`ℹ️ Skipping welcome message for career application`);
 
     // Send approval DM
     const embed = new EmbedBuilder()
@@ -378,7 +378,7 @@ app.post('/send-career-approval-dm', async (req, res) => {
     
     res.json({ 
       success: true, 
-      message: `Career approval DM sent to ${user.tag}, roles added, welcome message sent` 
+      message: `Career approval DM sent to ${user.tag}, roles added (no welcome message)` 
     });
   } catch (error) {
     console.error('Error sending career approval:', error);
