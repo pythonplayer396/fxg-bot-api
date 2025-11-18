@@ -31,10 +31,17 @@ const client = new Client({
   ]
 });
 
+// Track bot ready state
+let botReady = false;
+
 // Login to Discord
-client.login(process.env.DISCORD_BOT_TOKEN);
+client.login(process.env.DISCORD_BOT_TOKEN).catch(err => {
+  console.error('❌ Failed to login bot:', err);
+  process.exit(1);
+});
 
 client.once('ready', () => {
+  botReady = true;
   console.log(`✅ Bot logged in as ${client.user.tag}`);
   
   // Initialize channel counter by checking existing channels
@@ -52,6 +59,36 @@ client.once('ready', () => {
     }
   }
 });
+
+client.on('error', (error) => {
+  console.error('❌ Discord client error:', error);
+});
+
+client.on('disconnect', () => {
+  botReady = false;
+  console.warn('⚠️ Bot disconnected from Discord');
+});
+
+// Helper function to check if bot is ready
+function checkBotReady(res) {
+  if (!botReady || !client.user) {
+    return res.status(503).json({ 
+      error: 'Bot is not ready. Please wait a moment and try again.',
+      botStatus: client.user ? 'connecting' : 'offline'
+    });
+  }
+  return null;
+}
+
+// Helper function to fetch user with timeout
+async function fetchUserWithTimeout(discordId, timeout = 10000) {
+  return Promise.race([
+    client.users.fetch(discordId),
+    new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('User fetch timeout')), timeout)
+    )
+  ]);
+}
 
 // Button interaction handler
 client.on('interactionCreate', async (interaction) => {
@@ -142,8 +179,19 @@ client.on('interactionCreate', async (interaction) => {
 // Health check endpoint
 app.get('/', (req, res) => {
   res.json({ 
-    status: 'online', 
-    bot: client.user?.tag || 'connecting...' 
+    status: botReady ? 'online' : 'offline',
+    bot: client.user?.tag || 'connecting...',
+    ready: botReady,
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Lightweight ping endpoint for keep-alive
+app.get('/ping', (req, res) => {
+  res.json({ 
+    pong: true,
+    timestamp: new Date().toISOString(),
+    botReady: botReady
   });
 });
 
@@ -155,6 +203,10 @@ app.post('/send-interview-dm', async (req, res) => {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
+  // Check if bot is ready
+  const notReady = checkBotReady(res);
+  if (notReady) return notReady;
+
   const { discordId, applicantName, applicationType } = req.body;
 
   if (!discordId || !applicantName || !applicationType) {
@@ -164,7 +216,7 @@ app.post('/send-interview-dm', async (req, res) => {
   }
 
   try {
-    const user = await client.users.fetch(discordId);
+    const user = await fetchUserWithTimeout(discordId);
     
     const embed = new EmbedBuilder()
       .setTitle('🎉 Interview Invitation')
@@ -210,10 +262,14 @@ app.post('/send-approval-dm', async (req, res) => {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
+  // Check if bot is ready
+  const notReady = checkBotReady(res);
+  if (notReady) return notReady;
+
   const { discordId, applicantName, applicationType } = req.body;
 
   try {
-    const user = await client.users.fetch(discordId);
+    const user = await fetchUserWithTimeout(discordId);
     const guild = client.guilds.cache.get(CONFIG.GUILD_ID);
     
     if (!guild) {
@@ -283,10 +339,14 @@ app.post('/send-denial-dm', async (req, res) => {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
+  // Check if bot is ready
+  const notReady = checkBotReady(res);
+  if (notReady) return notReady;
+
   const { discordId, applicantName, applicationType } = req.body;
 
   try {
-    const user = await client.users.fetch(discordId);
+    const user = await fetchUserWithTimeout(discordId);
     const guild = client.guilds.cache.get(CONFIG.GUILD_ID);
 
     // Move channel to denied category and remove user permissions
@@ -343,10 +403,14 @@ app.post('/send-career-approval-dm', async (req, res) => {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
+  // Check if bot is ready
+  const notReady = checkBotReady(res);
+  if (notReady) return notReady;
+
   const { discordId, applicantName, applicationType } = req.body;
 
   try {
-    const user = await client.users.fetch(discordId);
+    const user = await fetchUserWithTimeout(discordId);
     const guild = client.guilds.cache.get(CONFIG.GUILD_ID);
     
     if (!guild) {
@@ -396,10 +460,14 @@ app.post('/send-career-denial-dm', async (req, res) => {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
+  // Check if bot is ready
+  const notReady = checkBotReady(res);
+  if (notReady) return notReady;
+
   const { discordId, applicantName, applicationType } = req.body;
 
   try {
-    const user = await client.users.fetch(discordId);
+    const user = await fetchUserWithTimeout(discordId);
     
     // Send denial DM
     const embed = new EmbedBuilder()
